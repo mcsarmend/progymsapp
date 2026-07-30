@@ -1,102 +1,131 @@
 // lib/providers/auth_provider.dart
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../constant.dart';
 
 class AuthProvider extends ChangeNotifier {
-  // Estados del provider
+  String? _token;
+  String? _userName;
+  String? _userEmail;
+  String? _errorMessage;
   bool _isLoading = false;
   bool _isAuthenticated = false;
-  String? _errorMessage;
-  String? _userEmail;
-  String? _userName;
-  String? _token;
-  String? _userRole;
 
   // Getters
+  String? get token => _token;
+  String? get userName => _userName;
+  String? get userEmail => _userEmail;
+  String? get errorMessage => _errorMessage;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
-  String? get errorMessage => _errorMessage;
-  String? get userEmail => _userEmail;
-  String? get userName => _userName;
-  String? get token => _token;
-  String? get userRole => _userRole;
 
-  // Usuario específico para la app de repartidores
-  final Map<String, Map<String, String>> _validUsers = {
-    'clemente.zarraga@progyms.com': <String, String>{
-      'password': r'Progyms123$',
-      'name': 'Clemente Zárraga',
-      'role': 'delivery',
-      'id': 'REP-001',
-      'phone': '+52 55 1234 5678',
-    },
-  };
+  AuthProvider() {
+    // Cargar token guardado si existe
+    _loadSavedToken();
+  }
 
-  // Método de Login
   Future<bool> login(String email, String password) async {
-    // Limpiar estados anteriores
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
+    _setLoading(true);
+    _clearError();
 
     try {
-      // Simular delay de conexión
-      await Future.delayed(const Duration(seconds: 2));
+      final response = await http.post(
+        Uri.parse(loginURL),
+        headers: headers,
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+        }),
+      );
 
-      // Validar credenciales
-      final userData = _validUsers[email];
-      
-      if (userData != null && userData['password'] == password) {
-        // Login exitoso
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _token = data['token'];
+
+        // Extraer información del usuario
+        if (data['user'] != null) {
+          _userName = data['user']['name'] ?? '';
+          _userEmail = data['user']['email'] ?? '';
+        }
+
         _isAuthenticated = true;
-        _userEmail = email;
-        _userName = userData['name'] ?? 'Repartidor';
-        _userRole = userData['role'] ?? 'delivery';
-        _token = 'token_${DateTime.now().millisecondsSinceEpoch}';
-        _isLoading = false;
-        notifyListeners();
+        _setLoading(false);
+
+        // Guardar token en SharedPreferences aquí si deseas
+        // await _saveToken(_token!);
+
         return true;
+      } else if (response.statusCode == 403) {
+        final data = jsonDecode(response.body);
+        _errorMessage = data['message'] ?? 'Credenciales incorrectas';
+        _setLoading(false);
+        return false;
       } else {
-        // Login fallido
-        _errorMessage = 'Credenciales incorrectas. Verifica tu correo y contraseña.';
-        _isLoading = false;
-        notifyListeners();
+        _errorMessage =
+            'Error al iniciar sesión. Código: ${response.statusCode}';
+        _setLoading(false);
         return false;
       }
     } catch (e) {
-      // Error inesperado
-      _errorMessage = 'Ocurrió un error al iniciar sesión. Intenta nuevamente.';
-      _isLoading = false;
-      notifyListeners();
+      _errorMessage =
+          'Error de conexión. Verifica que el servidor esté activo.';
+      _setLoading(false);
+      print('Error en login: $e');
       return false;
     }
   }
 
-  // Método para limpiar errores
+  Future<void> _saveToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+  }
+
+  Future<void> _loadSavedToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    _token = prefs.getString('auth_token');
+    if (_token != null) {
+      _isAuthenticated = true;
+      // Aquí podrías cargar los datos del usuario
+    }
+  }
+
+  void logout() async {
+    try {
+      if (_token != null) {
+        await http.post(
+          Uri.parse(logoutURL),
+          headers: {
+            ...headers,
+            'Authorization': 'Bearer $_token',
+          },
+        );
+      }
+    } catch (e) {
+      print('Error en logout: $e');
+    }
+
+    _token = null;
+    _userName = null;
+    _userEmail = null;
+    _isAuthenticated = false;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
   void clearError() {
     _errorMessage = null;
     notifyListeners();
   }
 
-  // Método de Logout
-  void logout() {
-    _isAuthenticated = false;
-    _userEmail = null;
-    _userName = null;
-    _userRole = null;
-    _token = null;
-    _errorMessage = null;
+  void _setLoading(bool loading) {
+    _isLoading = loading;
     notifyListeners();
   }
 
-  // Método para resetear todo el estado
-  void resetState() {
-    _isLoading = false;
-    _isAuthenticated = false;
+  void _clearError() {
     _errorMessage = null;
-    _userEmail = null;
-    _userName = null;
-    _userRole = null;
-    _token = null;
     notifyListeners();
   }
 }

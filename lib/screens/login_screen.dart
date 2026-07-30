@@ -158,9 +158,9 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 20),
-          
+
           const Text(
             'PROGYMS EXPRESS',
             style: TextStyle(
@@ -170,9 +170,9 @@ class _LoginScreenState extends State<LoginScreen> {
               letterSpacing: 2,
             ),
           ),
-          
+
           const SizedBox(height: 6),
-          
+
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
@@ -188,9 +188,9 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 10),
-          
+
           Text(
             'Inicia sesión para gestionar tus entregas',
             style: TextStyle(
@@ -315,7 +315,9 @@ class _LoginScreenState extends State<LoginScreen> {
       obscureText: _obscurePassword,
       suffixIcon: IconButton(
         icon: Icon(
-          _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+          _obscurePassword
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
           color: const Color(0xFFCC0000),
         ),
         onPressed: () {
@@ -392,6 +394,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ==================== BUILD LOGIN BUTTON ====================
+// lib/screens/login_screen.dart
+// ... (el resto del código igual, solo actualiza el método _buildLoginButton)
+
   Widget _buildLoginButton(AuthProvider authProvider) {
     return SizedBox(
       width: double.infinity,
@@ -402,14 +407,45 @@ class _LoginScreenState extends State<LoginScreen> {
             : () async {
                 if (_formKey.currentState!.validate()) {
                   FocusScope.of(context).unfocus();
-                  
+
                   final email = _emailController.text.trim();
                   final password = _passwordController.text.trim();
-                  
+
+                  // Mostrar diálogo de carga
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+
                   final success = await authProvider.login(email, password);
+
+                  // Cerrar diálogo de carga
+                  Navigator.pop(context);
 
                   if (success && mounted) {
                     _showSuccessDialog();
+                  } else if (mounted) {
+                    // Mostrar el error del provider
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          authProvider.errorMessage ??
+                              'Error al iniciar sesión',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        backgroundColor: const Color(0xFFCC0000),
+                        duration: const Duration(seconds: 4),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
                   }
                 }
               },
@@ -662,12 +698,12 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isEmail 
+        color: isEmail
             ? const Color(0xFFCC0000).withOpacity(0.1)
             : const Color(0xFFFFB3B3).withOpacity(0.3),
         borderRadius: BorderRadius.circular(4),
         border: Border.all(
-          color: isEmail 
+          color: isEmail
               ? const Color(0xFFCC0000).withOpacity(0.2)
               : const Color(0xFFCC0000).withOpacity(0.2),
         ),
@@ -776,7 +812,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        Provider.of<AuthProvider>(context, listen: false).userEmail ?? '',
+                        Provider.of<AuthProvider>(context, listen: false)
+                                .userEmail ??
+                            '',
                         style: const TextStyle(
                           fontSize: 13,
                           color: Color(0xFF666666),
@@ -812,7 +850,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showForgotPasswordDialog() {
     final TextEditingController emailController = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -925,7 +963,8 @@ class _LoginScreenState extends State<LoginScreen> {
               style: TextStyle(fontSize: 14, color: Color(0xFF666666)),
             ),
             const SizedBox(height: 16),
-            _buildContactCard(Icons.email_outlined, 'reclutamiento@progyms.com'),
+            _buildContactCard(
+                Icons.email_outlined, 'reclutamiento@progyms.com'),
             const SizedBox(height: 10),
             _buildContactCard(Icons.phone_outlined, '+52 55 1234 5678'),
             const SizedBox(height: 10),
