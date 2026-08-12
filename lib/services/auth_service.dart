@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,9 @@ class AuthService {
     String password,
   ) async {
     try {
+      print('LOGIN URL: $loginURL');
+      print('LOGIN EMAIL: $email');
+
       final response = await http
           .post(
             Uri.parse(loginURL),
@@ -27,12 +31,20 @@ class AuthService {
           )
           .timeout(const Duration(seconds: 15));
 
+      print('STATUS CODE: ${response.statusCode}');
+      print('RESPONSE BODY: ${response.body}');
+
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
+        print('LOGIN CORRECTO');
+
         final prefs = await SharedPreferences.getInstance();
 
         final token = data['token']?.toString();
+
+        print('TOKEN: $token');
+        print('USER DATA: ${data['user']}');
 
         if (token == null || token.isEmpty) {
           return {
@@ -41,21 +53,41 @@ class AuthService {
           };
         }
 
-        final user = User.fromJson(
-          Map<String, dynamic>.from(data['user']),
-        );
+        try {
+          final userData = Map<String, dynamic>.from(data['user']);
 
-        await prefs.setString(tokenKey, token);
-        await prefs.setString(
-          userKey,
-          jsonEncode(data['user']),
-        );
+          print('USER DATA MAP: $userData');
 
-        return {
-          'success': true,
-          'user': user,
-          'token': token,
-        };
+          final user = User.fromJson(userData);
+
+          print('USER PARSEADO CORRECTAMENTE');
+          print('USER ID: ${user.id}');
+          print('USER NAME: ${user.name}');
+          print('USER EMAIL: ${user.email}');
+
+          await prefs.setString(tokenKey, token);
+          await prefs.setString(
+            userKey,
+            jsonEncode(data['user']),
+          );
+
+          print('DATOS GUARDADOS EN SHARED PREFERENCES');
+
+          return {
+            'success': true,
+            'user': user,
+            'token': token,
+          };
+        } catch (e, stackTrace) {
+          print('ERROR AL CONVERTIR USER: $e');
+          print(stackTrace);
+
+          return {
+            'success': false,
+            'message': 'Error al procesar los datos del usuario.',
+            'error': e.toString(),
+          };
+        }
       }
 
       String message = 'Error al iniciar sesión.';
@@ -68,14 +100,27 @@ class AuthService {
         message = 'Correo o contraseña incorrectos.';
       }
 
+      print('ERROR LOGIN: $message');
+
       return {
         'success': false,
         'message': message,
       };
-    } catch (e) {
+    } on TimeoutException catch (e) {
+      print('TIMEOUT LOGIN: $e');
+
       return {
         'success': false,
-        'message': 'No se pudo conectar con el servidor.',
+        'message': 'El servidor tardó demasiado en responder.',
+        'error': e.toString(),
+      };
+    } catch (e, stackTrace) {
+      print('ERROR LOGIN: $e');
+      print(stackTrace);
+
+      return {
+        'success': false,
+        'message': 'Error al realizar el login.',
         'error': e.toString(),
       };
     }
@@ -184,5 +229,78 @@ class AuthService {
 
     await prefs.remove(tokenKey);
     await prefs.remove(userKey);
+  }
+
+  Future<List<Map<String, dynamic>>> getPedidosRepartidor(
+    int repartidorId,
+  ) async {
+    final token = await getToken();
+
+    if (token == null || token.isEmpty) {
+      throw Exception('No hay sesión activa.');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseURL/pedidosrepartidor?id=$repartidorId'),
+      headers: {
+        ...headers,
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      if (data is List) {
+        return data.map((pedido) => Map<String, dynamic>.from(pedido)).toList();
+      }
+
+      return [];
+    }
+
+    if (response.statusCode == 401) {
+      await clearSession();
+      throw Exception('Sesión expirada.');
+    }
+
+    throw Exception('No se pudieron obtener los pedidos.');
+  }
+
+  Future<bool> cambiarEstadoPedido(
+    dynamic pedidoId,
+    String nuevoEstatus,
+  ) async {
+    final token = await getToken();
+
+    if (token == null || token.isEmpty) {
+      throw Exception('No hay sesión activa.');
+    }
+
+    final response = await http
+        .post(
+          Uri.parse('$baseURL/pedidoscambiarestado'),
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'id': pedidoId,
+            'nuevoEstatus': nuevoEstatus,
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['success'] == true;
+    }
+
+    if (response.statusCode == 401) {
+      await clearSession();
+      throw Exception('Sesión expirada.');
+    }
+
+    throw Exception('No se pudo cambiar el estado del pedido.');
   }
 }

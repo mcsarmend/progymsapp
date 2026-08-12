@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 // ============================================================
 
 const baseURL2 = 'https://seges.com.mx/pedidos';
-const baseURL = 'http://193.186.4.212:8000/api';
+const baseURL = 'http://192.168.1.10:8000/api';
 
 const loginURL = '$baseURL/login';
 const dropURL = '$baseURL/drop';
