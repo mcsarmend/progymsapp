@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
@@ -232,75 +233,158 @@ class AuthService {
   }
 
   Future<List<Map<String, dynamic>>> getPedidosRepartidor(
-    int repartidorId,
-  ) async {
+      int repartidorId) async {
     final token = await getToken();
 
     if (token == null || token.isEmpty) {
       throw Exception('No hay sesión activa.');
     }
 
-    final response = await http.get(
-      Uri.parse('$baseURL/pedidosrepartidor?id=$repartidorId'),
-      headers: {
-        ...headers,
-        'Authorization': 'Bearer $token',
-      },
-    );
+    try {
+      // La URL lleva el ID como parámetro GET como espera tu controlador
+      final url = Uri.parse('$baseURL/pedidosrepartidor?id=$repartidorId');
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
+      print('📦 URL pedidos: $url');
+      print('📦 Token: $token');
+      print('📦 Repartidor ID: $repartidorId');
 
-      if (data is List) {
-        return data.map((pedido) => Map<String, dynamic>.from(pedido)).toList();
+      final response = await http.get(
+        url,
+        headers: {
+          ...headers,
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      print('📦 Status code: ${response.statusCode}');
+      print('📦 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['success'] == true) {
+          // data['data'] contiene la lista de pedidos
+          final List<dynamic> pedidosData = data['data'] ?? [];
+          return pedidosData
+              .map((pedido) => Map<String, dynamic>.from(pedido))
+              .toList();
+        } else {
+          throw Exception(data['message'] ?? 'Error al obtener pedidos');
+        }
       }
 
-      return [];
-    }
+      if (response.statusCode == 401) {
+        await clearSession();
+        throw Exception('Sesión expirada. Por favor inicia sesión nuevamente.');
+      }
 
-    if (response.statusCode == 401) {
-      await clearSession();
-      throw Exception('Sesión expirada.');
+      throw Exception('Error del servidor: ${response.statusCode}');
+    } on SocketException catch (e) {
+      print('❌ Error de red: $e');
+      throw Exception(
+          'No se puede conectar al servidor. Verifica tu conexión a internet.');
+    } on TimeoutException catch (e) {
+      print('❌ Timeout: $e');
+      throw Exception('El servidor tardó demasiado en responder.');
+    } catch (e) {
+      print('❌ Error inesperado: $e');
+      rethrow;
     }
-
-    throw Exception('No se pudieron obtener los pedidos.');
   }
 
-  Future<bool> cambiarEstadoPedido(
-    dynamic pedidoId,
-    String nuevoEstatus,
-  ) async {
+  Future<bool> cambiarEstadoPedido(int pedidoId, String nuevoEstatus) async {
     final token = await getToken();
 
     if (token == null || token.isEmpty) {
       throw Exception('No hay sesión activa.');
     }
 
-    final response = await http
-        .post(
-          Uri.parse('$baseURL/pedidoscambiarestado'),
-          headers: {
-            ...headers,
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-          body: jsonEncode({
-            'id': pedidoId,
-            'nuevoEstatus': nuevoEstatus,
-          }),
-        )
-        .timeout(const Duration(seconds: 15));
+    try {
+      final url = Uri.parse('$baseURL/pedidoscambiarestado');
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['success'] == true;
+      // El body debe tener exactamente lo que espera tu controlador
+      final body = jsonEncode({
+        'id': pedidoId,
+        'nuevoEstatus': nuevoEstatus,
+      });
+
+      print('🔄 URL cambio estado: $url');
+      print('🔄 Body: $body');
+      print('🔄 Token: $token');
+
+      final response = await http
+          .post(
+            url,
+            headers: {
+              ...headers,
+              'Authorization': 'Bearer $token',
+            },
+            body: body,
+          )
+          .timeout(const Duration(seconds: 15));
+
+      print('🔄 Status code: ${response.statusCode}');
+      print('🔄 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+
+      if (response.statusCode == 401) {
+        await clearSession();
+        throw Exception('Sesión expirada. Por favor inicia sesión nuevamente.');
+      }
+
+      // Intentar obtener el mensaje de error del servidor
+      String errorMessage = 'No se pudo cambiar el estado del pedido.';
+      try {
+        final data = jsonDecode(response.body);
+        if (data['message'] != null) {
+          errorMessage = data['message'];
+        }
+      } catch (_) {}
+
+      throw Exception(errorMessage);
+    } on SocketException catch (e) {
+      print('❌ Error de red: $e');
+      throw Exception(
+          'No se puede conectar al servidor. Verifica tu conexión a internet.');
+    } on TimeoutException catch (e) {
+      print('❌ Timeout: $e');
+      throw Exception('El servidor tardó demasiado en responder.');
+    } catch (e) {
+      print('❌ Error inesperado: $e');
+      rethrow;
+    }
+  }
+
+  // Método para obtener un pedido específico (opcional)
+  Future<Map<String, dynamic>?> getPedidoById(int pedidoId) async {
+    final token = await getToken();
+
+    if (token == null || token.isEmpty) {
+      throw Exception('No hay sesión activa.');
     }
 
-    if (response.statusCode == 401) {
-      await clearSession();
-      throw Exception('Sesión expirada.');
-    }
+    try {
+      final response = await http.get(
+        Uri.parse('$baseURL/pedidos/$pedidoId'),
+        headers: {
+          ...headers,
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 15));
 
-    throw Exception('No se pudo cambiar el estado del pedido.');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return Map<String, dynamic>.from(data['data'] ?? {});
+      }
+
+      return null;
+    } catch (e) {
+      print('❌ Error al obtener pedido: $e');
+      return null;
+    }
   }
 }
